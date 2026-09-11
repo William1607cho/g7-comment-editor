@@ -18,13 +18,21 @@ upgrades stored HTML comments on the visitor page through an allow-list sanitize
 
 1. **Editor mount.** The script finds the comment / reply / comment-edit
    `<textarea>` elements and replaces each with a CKEditor 5 `ClassicEditor`.
-   Toolbar: **heading (H2 / H3 / H4) · bold · italic · strikethrough · inline code ·
-   bulleted list · numbered list · block quote · code block · link**. Every plugin
-   these buttons need is already inside the CKEditor 5 UMD single-package bundle that
-   `sirsoft-ckeditor5` serves same-origin, so nothing extra is loaded — the toolbar
-   just exposes what is there. `buildToolbar()` assembles defensively: a plugin that
-   is somehow missing from the bundle is skipped together with its toolbar item and a
-   warning is logged.
+   The toolbar matches the Gnuboard7 post-body editor (`sirsoft-ckeditor5`)
+   exactly, minus image upload: **heading (Paragraph / Heading 1-3) · bold ·
+   italic · underline · strikethrough · alignment · link · block quote ·
+   bulleted list · numbered list · indent/outdent · table**. Heading options
+   are CKEditor 5's own defaults (same `<h2>`/`<h3>`/`<h4>` mapping as the
+   post-body editor), and the UI translation for the current locale is loaded
+   so labels match it as well. Every plugin these buttons need is already
+   inside the CKEditor 5 UMD single-package bundle that `sirsoft-ckeditor5`
+   serves same-origin, so nothing extra is loaded — the toolbar just exposes
+   what is there. `buildToolbar()` assembles defensively: a plugin that is
+   somehow missing from the bundle is skipped together with its toolbar item
+   and a warning is logged. The table's own contextual toolbar is
+   intentionally reduced to add/remove column/row — no cell merging, no
+   per-cell or per-table style editor — to keep the sanitizer's attack
+   surface small (see Security below).
 
    The original textarea stays in the DOM (hidden) so the editor can write its value
    back and dispatch an `input` event, keeping the existing submit / save flow in
@@ -42,12 +50,20 @@ upgrades stored HTML comments on the visitor page through an allow-list sanitize
    `text` binding, so raw HTML shows up as escaped tags. The script scans the
    rendered body and promotes it to real formatting through a **whitelist-rebuild
    sanitizer** — allowed tags are
-   `p br strong b em i u s ul ol li a[href] img[src][alt] blockquote pre code h1–h6`,
-   everything else (tag, all attributes, event handlers) is dropped. `blockquote`,
-   `pre`, `code` and `h1–h6` allow **zero attributes**: `walk()` rebuilds each
-   element with `createElement` and copies only whitelisted attributes, so `class`
-   (e.g. a code block's `language-*`), `style`, `id` and `on*` never survive. Text
-   nodes — including newlines inside `<pre>` — go through `createTextNode`.
+   `p br strong b em i u s ul ol li a[href] img[src][alt] blockquote h1–h6 table thead tbody tr th td`,
+   everything else (tag, all attributes, event handlers) is dropped. Most allowed
+   tags carry **zero attributes**: `walk()` rebuilds each element with
+   `createElement` and copies only whitelisted attributes, so `class`, `id` and
+   `on*` never survive anywhere. The one exception is `<p>`/`<h1>`–`<h6>`, which
+   may keep a `style` attribute — but only after it is rebuilt from scratch: every
+   declaration is parsed and only `text-align: left|right|center|justify` and
+   `margin-left`/`margin-right: 0–800px` (from the alignment and indent/outdent
+   buttons) survive, so a `style` attribute is never copied verbatim. `<pre>`,
+   `<code>` (from a removed earlier release) and CKEditor's own `<figure>` table
+   wrapper are not in the allow-list, but they are **unwrapped** rather than
+   dropped outright — their children (plain text, or the `<table>` itself) join
+   the parent, so a comment written with the old code-block feature keeps its
+   text instead of vanishing. Text nodes go through `createTextNode`.
 
 3. **External-link rendering.** After the sanitize pass the promoted body is
    post-processed so a URL that was pasted as plain text becomes visual content
@@ -118,9 +134,15 @@ the render upgrade, so **XSS defence is entirely the plugin's whitelist sanitize
   `mailto:`), `target="_blank"`, a forced `rel="noopener noreferrer"`; `<img>` `src`
   (only an absolute `http(s)://` URL) and `alt`, with forced `loading="lazy"` and
   `referrerpolicy="no-referrer"`.
-- `blockquote pre code h1–h6` allow **no attributes at all** — a code block's
-  `class="language-*"`, `style`, `id` are all dropped. Newlines inside `<pre>` are
-  escaped via `createTextNode`.
+- `blockquote table thead tbody tr th td h1–h6` allow **no attributes at all** —
+  `class`, `style`, `id`, `colspan`/`rowspan` are all dropped.
+- `<p>` and `<h1>`–`<h6>` allow a `style` attribute, but never verbatim: each
+  `property: value` declaration is parsed independently and only
+  `text-align: left|right|center|justify` and `margin-left`/`margin-right`
+  (digits + `px`, capped at 800) pass through. Anything else — colors,
+  `position`, `expression(...)`, `url(javascript:...)`, a declaration crafted to
+  break out of the attribute — is dropped, one declaration at a time, with no
+  path to smuggle a raw string into the output.
 - `on*` handler attributes are never in the allow-list, so they are always removed.
 - Parsing uses `DOMParser` (inert document — scripts do not run).
 
@@ -141,12 +163,18 @@ and the input goes back to a plain textarea.
 ## Known limitations
 
 - **No image upload.** Images are only rendered from external URLs pasted as text
-  (hot-linking). There is no image button on the toolbar.
-- **The code block has no language picker.** The language dropdown is limited to a
-  single "Plain text" entry — the post-body editor has no language UI either, and
-  the sanitizer strips the `language-*` class anyway, so the choice is meaningless.
-- **No table, media embed or horizontal rule** on the toolbar — out of scope for a
-  comment. Headings are limited to **H2 / H3 / H4** (page-level H1 is excluded).
+  (hot-linking). There is no image button on the toolbar — this is the only
+  toolbar difference from the post-body editor.
+- **No code block or inline code** on the toolbar (removed in 1.1.0) — the
+  post-body editor doesn't have them either, so this release drops them for
+  parity. Existing comments written with them still render (as plain text,
+  unwrapped — see above), no migration needed.
+- **No cell merging or per-cell/table style editing** for tables — only
+  insert-table and add/remove column/row, to keep the sanitizer's `style`
+  allow-list minimal. Headings are limited to **Heading 1-3** (page-level H1
+  is excluded, same as the post-body editor).
+- **No media embed or horizontal rule** on the toolbar — out of scope for a
+  comment.
 - **No OpenGraph link cards.** External-link rendering covers SNS embeds + image
   URLs + word-breaking only.
 - SNS embeds load each platform's official widget script from an external domain —
@@ -162,9 +190,12 @@ and the input goes back to a plain textarea.
 수정하지 않고**, 전 페이지에 로드되는 스크립트 하나로 그 입력창을 CKEditor 5 로 바꾸고,
 저장된 HTML 댓글을 방문자 화면에서 허용 태그만 남겨 렌더합니다.
 
-**툴바**: 제목(H2/H3/H4) · 굵게 · 기울임 · 취소선 · 인라인 코드 · 글머리표 목록 ·
-번호 목록 · 인용구 · 코드블록 · 링크. 코드블록의 언어 선택은 "Plain text" 하나로
-축소되어 있습니다(선택이 무의미). 이미지 업로드·표·미디어·구분선은 없습니다.
+**툴바**: 게시글 본문 에디터(sirsoft-ckeditor5)와 이미지 업로드만 빼고 완전히 동일합니다 —
+제목(문단/제목1/제목2/제목3) · 굵게 · 기울임 · 밑줄 · 취소선 · 정렬 · 링크 · 인용구 ·
+글머리표 목록 · 번호 목록 · 들여쓰기/내어쓰기 · 표(칸/행 추가·삭제만, 셀 병합·스타일 편집 없음).
+제목 옵션은 CKEditor5 기본값 그대로라 본문과 태그·라벨이 동일하고, 에디터 UI 번역도
+현재 로케일로 로드됩니다. 인라인 코드·코드블록은 1.1.0 에서 제거했습니다(본문에 없던
+기능). 이미지 업로드·미디어·구분선은 없습니다.
 
 **외부 링크 렌더링**: 댓글에 텍스트로 붙여넣은 URL 을 렌더 시점에 시각 콘텐츠로 바꿉니다.
 한 블록에 단독으로 놓인 링크만 SNS 임베드(YouTube · X · Instagram · TikTok,
@@ -172,8 +203,12 @@ and the input goes back to a plain textarea.
 자동 줄바꿈. 플랫폼별·이미지 개별 on/off 는 플러그인 설정으로 조정합니다.
 
 **보안**: 저장 HTML 은 서버에서 검열되지 않으므로 XSS 방어는 플러그인의 화이트리스트
-새니타이저가 전담합니다. 허용 태그 외 전부 제거, `blockquote/pre/code/h1~h6` 는 속성
-허용 0, `on*`·`javascript:`·임의 도메인 iframe 은 생성 경로가 없습니다.
+새니타이저가 전담합니다. 허용 태그 외 전부 제거, `blockquote/table 계열/h1~h6` 는 속성
+허용 0, `on*`·`javascript:`·임의 도메인 iframe 은 생성 경로가 없습니다. `p`/`h1~h6` 의
+`style` 만 예외적으로 허용하되 통짜 복사가 아니라 `text-align`(4개 키워드)·
+`margin-left/right`(0~800px 숫자)만 값까지 검증해 재조립합니다 — 그 외 프로퍼티/값은
+전부 버려집니다. 폐지된 `pre`/`code`, CKEditor 표 래퍼 `figure` 는 통째로 버리지 않고
+태그만 벗겨 텍스트/표 본체는 보존합니다(기존 코드블록 댓글도 텍스트로 남음).
 
 **설치**: 의존 플러그인 `sirsoft-ckeditor5 (>= 1.0.3)` 를 먼저 설치·활성화한 뒤 이 저장소를
 `plugins/g7-comment-editor/` 에 두고 `php artisan plugin:install g7-comment-editor` →

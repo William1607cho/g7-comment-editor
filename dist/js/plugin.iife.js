@@ -4,8 +4,11 @@
  * sirsoft-board 댓글 입력창은 기본 사양상 순수 텍스트 <textarea> 다. 이 스크립트가
  * sirsoft-board · sirsoft-ckeditor5 · sirsoft-basic 을 **한 줄도 수정하지 않고**:
  *
- *  1. 댓글/답글/댓글수정 textarea 를 감지해 CKEditor 5 ClassicEditor 로 교체한다
- *     (제목(H2/H3/H4)·굵게·기울임·취소선·인라인코드·글머리목록·번호목록·인용구·코드블록·링크).
+ *  1. 댓글/답글/댓글수정 textarea 를 감지해 CKEditor 5 ClassicEditor 로 교체한다.
+ *     툴바는 게시글 본문 에디터(sirsoft-ckeditor5)의 standard 프리셋과 **완전 대응**한다
+ *     (제목·굵게·기울임·밑줄·취소선·정렬·인용구·글머리목록·번호목록·들여쓰기/내어쓰기·표·링크,
+ *     이미지 업로드만 제외 — sirsoft-board 첨부 시스템 결합 문제로 재사용 불가 판정).
+ *     2026-09-11: 직전에 추가했던 인라인 코드·코드블록은 본문에 없는 기능이라 롤백했다.
  *     필요한 플러그인은 sirsoft-ckeditor5 가 동봉한 CKEditor 5 UMD 단일 패키지 번들에 이미
  *     들어 있어 툴바 노출만 한다(별도 번들 로드 없음). 원본 textarea 는 숨긴 채 DOM 에 남겨,
  *     에디터 내용을 되써넣고 bubbling `input` 이벤트를 디스패치한다 → 템플릿 엔진의
@@ -14,8 +17,8 @@
  *  2. 저장된 HTML 댓글을 방문자 목록에서 승격한다. sirsoft-basic 은 댓글 본문을 `text`
  *     바인딩으로 그려 HTML 이 이스케이프되므로(태그가 그대로 보임), 렌더된 본문 노드를
  *     스캔해 **화이트리스트 새니타이저**(p·br·strong/b·em/i·u·s·ul·ol·li·a[href]·img[src][alt]·
- *     blockquote·pre·code·h1~h6 만 허용, 그 외 태그·모든 속성·이벤트 핸들러 제거)를 거쳐
- *     실제 서식으로 바꾼다.
+ *     blockquote·table 계열·h1~h6 만 허용, p/h1~h6 에 한해 text-align·margin-left 만 검증
+ *     통과한 값으로 제한 허용, 그 외 태그·속성·이벤트 핸들러 제거)를 거쳐 실제 서식으로 바꾼다.
  *
  * 서버는 댓글 HTML 을 검열 없이 저장/반환하고, 승격 시 이스케이프가 풀리므로 **XSS 방어는
  * 아래 sanitizeCommentHtml() 이 전담**한다. CKEditor 5 본체/CSS 는 sirsoft-ckeditor5 가
@@ -99,11 +102,70 @@
     return '/api/plugins/assets/' + CKE_DEP + '/' + relPath;
   }
 
+  /**
+   * 현재 locale 을 반환한다. sirsoft-ckeditor5 initEditor.ts 와 동일한 우선순위
+   * (G7Core.locale.current() → localStorage.g7_locale → 'ko').
+   *
+   * 이게 없으면(직전 구현) CKEditor 에 `language` 를 전달하지 않아 영어 UI 로
+   * 뜬다 — 툴바 구성은 본문과 같아져도 "제목 1/2/2" 대신 "Heading 1/2/3" 로
+   * 보여 본문과 다르게 느껴졌다(2026-09-11 발견 — 본문 대응 작업 중 실측).
+   */
+  function getCurrentLocale() {
+    var G7Core = window.G7Core;
+    if (G7Core && G7Core.locale && typeof G7Core.locale.current === 'function') {
+      return G7Core.locale.current();
+    }
+    try {
+      return localStorage.getItem('g7_locale') || 'ko';
+    } catch (e) {
+      return 'ko';
+    }
+  }
+
   /* ================================================================ *
    *  CKEditor 5 지연 로더 (댓글 textarea 를 실제로 발견했을 때만)
    * ================================================================ */
 
   var _ckePromise = null;
+
+  /**
+   * CKEditor 5 번역 스크립트를 로드한다. 영어는 내장이라 로드하지 않는다.
+   *
+   * script id 는 **sirsoft-ckeditor5 initEditor.ts 와 동일한 패턴**
+   * (`ckeditor5-translations-{locale}`)을 쓴다 — 같은 페이지에서 게시글 본문
+   * 에디터와 댓글 에디터가 동시에 뜨는 화면(예: 게시글 수정 화면 아래 댓글창)에서
+   * 누가 먼저 로드하든 태그 하나로 수렴시키기 위함이다. id 가 갈렸다면 UMD 중복
+   * 로딩 위험까진 없어도(번역 파일은 부작용이 등록뿐) 불필요한 중복 요청이 생긴다.
+   *
+   * 실패해도 reject 하지 않는다 — 번역 실패는 "영어로 뜬다"는 정상적인 열화다.
+   */
+  function loadCkeditorTranslations(locale) {
+    if (locale === 'en') return Promise.resolve();
+    var id = 'ckeditor5-translations-' + locale;
+    if (document.getElementById(id)) return Promise.resolve();
+
+    var url = depAssetUrl('dist/vendor/ckeditor5/' + CKE_VER + '/translations/' + locale + '.umd.js');
+    var api = window.G7Core && window.G7Core.asset;
+
+    if (api && typeof api.loadScript === 'function') {
+      return api.loadScript(url, { id: id }, { label: 'ckeditor5 translations (g7-comment-editor): ' + locale })
+        .catch(function (err) {
+          logger.warn('번역 로드 실패 (' + locale + ') — 영어로 동작합니다', err);
+        });
+    }
+
+    return new Promise(function (resolve) {
+      var script = document.createElement('script');
+      script.id = id;
+      script.src = url;
+      script.onload = function () { resolve(); };
+      script.onerror = function () {
+        logger.warn('번역 로드 실패 (' + locale + ') — 영어로 동작합니다');
+        resolve();
+      };
+      document.head.appendChild(script);
+    });
+  }
 
   function loadCKEditor() {
     if (window.CKEDITOR && window.CKEDITOR.ClassicEditor) return Promise.resolve(window.CKEDITOR);
@@ -122,6 +184,10 @@
       .then(function () {
         if (window.CKEDITOR && window.CKEDITOR.ClassicEditor) return window.CKEDITOR;
         throw new Error('CKEDITOR global missing after UMD load');
+      })
+      .then(function (CK) {
+        // 번역 로드는 실패해도 진행(영어 폴백) — UMD 확보 자체와는 별개 관문이다.
+        return loadCkeditorTranslations(getCurrentLocale()).then(function () { return CK; });
       })
       .catch(function (err) {
         _ckePromise = null; // 다음 시도 때 재로드 허용
@@ -188,12 +254,22 @@
   // 허용 태그 → 허용 속성
   //  IMG 는 "외부 링크 렌더링" 기능이 추가되며 허용 목록에 들어갔다. src 는 절대 http(s)
   //  URL 만(아래 safeImgSrc), 복제 속성은 src/alt 둘뿐이라 on* 이벤트 속성은 자동 탈락한다.
-  //  BLOCKQUOTE/PRE/CODE/H1~H6 은 "툴바 확장"(인용구·코드블록·인라인코드·제목)으로 추가.
-  //  전부 **속성 0** — walk() 가 새 엘리먼트를 createElement 로 다시 만들고 허용 속성만
-  //  복제하므로 class(코드블록 language-*)·style·id·on* 은 전부 탈락한다. 스타일 인젝션·
-  //  이벤트 핸들러 경로 없음. 텍스트는 createTextNode 로 이스케이프되어 pre 안 개행도 안전.
+  //  BLOCKQUOTE/H1~H6 은 "툴바 확장"(인용구·제목)으로, TABLE 계열은 이번 "본문과 툴바
+  //  완전 대응" 작업(2026-09-11)으로 추가됐다(표는 이미지 업로드와 달리 재사용 가능 판정).
+  //  P/H1~H6 은 style 속성을 제한적으로 허용한다(정렬·들여쓰기 지원 — 아래 safeBlockStyle,
+  //  walk() 의 전용 분기 참고). 그 외 태그는 전부 **속성 0** — walk() 가 새 엘리먼트를
+  //  createElement 로 다시 만들고 허용 속성만 복제하므로 class·style·id·on* 은 전부
+  //  탈락한다(P/H1~H6 의 style 도 통짜 허용이 아니라 값 검증 후 재조립이다 — 아래 참고).
+  //  텍스트는 createTextNode 로 이스케이프되어 안전.
+  //
+  //  PRE/CODE(코드블록·인라인코드, 직전 작업에서 추가했다가 이번에 롤백)와 FIGURE(CKEditor
+  //  표가 감싸는 래퍼)는 화이트리스트에 없지만 **완전히 버리지 않는다** — UNWRAP_TAGS 로
+  //  등록해 태그만 벗기고 자식(텍스트·표 본체)은 그대로 상위에 합류시킨다. 그러지 않으면
+  //  walk() 의 기본 동작(허용 외 태그는 자식까지 통째로 버림)대로 처리돼, 기존에 코드블록을
+  //  쓴 댓글의 본문 텍스트 자체가 통째로 사라진다 — 서식만 잃고 텍스트는 보존하는 쪽이
+  //  사용자 데이터 보존 원칙에 맞는다(별도 마이그레이션 불필요).
   var ALLOWED_TAGS = {
-    P: [],
+    P: ['style'],
     BR: [],
     STRONG: [],
     B: [],
@@ -205,17 +281,52 @@
     OL: [],
     LI: [],
     BLOCKQUOTE: [],
-    PRE: [],
-    CODE: [],
-    H1: [],
-    H2: [],
-    H3: [],
-    H4: [],
-    H5: [],
-    H6: [],
+    H1: ['style'],
+    H2: ['style'],
+    H3: ['style'],
+    H4: ['style'],
+    H5: ['style'],
+    H6: ['style'],
+    TABLE: [],
+    THEAD: [],
+    TBODY: [],
+    TR: [],
+    TH: [],
+    TD: [],
     A: ['href', 'target', 'rel'],
     IMG: ['src', 'alt']
   };
+
+  /** 허용 외 태그이지만 자식(텍스트 등)은 보존하고 래퍼만 벗기는 태그. */
+  var UNWRAP_TAGS = { PRE: 1, CODE: 1, FIGURE: 1 };
+
+  /** style 속성 부분 허용 — 프로퍼티 이름과 값을 전부 정규식으로 검증한다.
+   *  통짜 style 허용은 절대 하지 않는다: `expression()`/`url(javascript:...)` 같은
+   *  구식 IE 벡터든 최신 CSS 인젝션이든, 여기서 걸러지는 게 아니라 애초에 아래 두
+   *  패턴(정렬 키워드, 들여쓰기 px 값) 외에는 통과할 방법이 없다.
+   *  - text-align: left|right|center|justify (Alignment 플러그인 기본 산출값)
+   *  - margin-left/margin-right: 0~800px 사이 정수 px (IndentBlock 기본 산출값,
+   *    40px 단위 — 800px 은 20단 들여쓰기로 사실상 넉넉한 상한)
+   *  그 외 프로퍼티(색상·배경·position·float·behavior 등)와 값은 전부 버려진다.
+   */
+  function safeBlockStyle(raw) {
+    var decls = String(raw || '').split(';');
+    var out = [];
+    for (var i = 0; i < decls.length; i++) {
+      var m = /^\s*([a-zA-Z-]+)\s*:\s*(.+?)\s*$/.exec(decls[i]);
+      if (!m) continue;
+      var prop = m[1].toLowerCase();
+      var val = m[2].trim();
+      if (prop === 'text-align' && /^(left|right|center|justify)$/i.test(val)) {
+        out.push('text-align:' + val.toLowerCase());
+      } else if ((prop === 'margin-left' || prop === 'margin-right') && /^\d{1,3}px$/.test(val)) {
+        var n = parseInt(val, 10);
+        if (n >= 0 && n <= 800) out.push(prop + ':' + n + 'px');
+      }
+      // 그 외 프로퍼티/값은 무시(화이트리스트에 없으면 그냥 버려진다)
+    }
+    return out.length ? out.join(';') : null;
+  }
 
   function safeHref(raw) {
     var v = String(raw || '').trim();
@@ -251,34 +362,44 @@
           to.appendChild(document.createTextNode(node.nodeValue));
         } else if (node.nodeType === 1) {
           var tag = node.tagName;
-          var allowedAttrs = Object.prototype.hasOwnProperty.call(ALLOWED_TAGS, tag) ? ALLOWED_TAGS[tag] : null;
-          if (allowedAttrs) {
-            if (tag === 'IMG') {
-              var isrc = safeImgSrc(node.getAttribute('src'));
-              if (isrc) {
-                var im = document.createElement('img');
-                im.setAttribute('src', isrc);
-                im.setAttribute('alt', String(node.getAttribute('alt') || ''));
-                im.setAttribute('loading', 'lazy');
-                im.setAttribute('referrerpolicy', 'no-referrer');
-                to.appendChild(im);
-              }
-              // src 가 부적합하면 이미지 자체를 버린다 (자식 없음)
-            } else {
-              var el = document.createElement(tag.toLowerCase());
-              if (tag === 'A') {
-                var href = safeHref(node.getAttribute('href'));
-                if (href) {
-                  el.setAttribute('href', href);
-                  el.setAttribute('rel', 'noopener noreferrer');
-                  if (node.getAttribute('target') === '_blank') el.setAttribute('target', '_blank');
+          if (UNWRAP_TAGS[tag]) {
+            // 래퍼만 벗기고 자식은 그대로 상위에 합류 (폐지된 코드블록/인라인코드,
+            // CKEditor 표 래퍼 FIGURE — 텍스트/표 본체는 보존)
+            walk(node, to);
+          } else {
+            var allowedAttrs = Object.prototype.hasOwnProperty.call(ALLOWED_TAGS, tag) ? ALLOWED_TAGS[tag] : null;
+            if (allowedAttrs) {
+              if (tag === 'IMG') {
+                var isrc = safeImgSrc(node.getAttribute('src'));
+                if (isrc) {
+                  var im = document.createElement('img');
+                  im.setAttribute('src', isrc);
+                  im.setAttribute('alt', String(node.getAttribute('alt') || ''));
+                  im.setAttribute('loading', 'lazy');
+                  im.setAttribute('referrerpolicy', 'no-referrer');
+                  to.appendChild(im);
                 }
+                // src 가 부적합하면 이미지 자체를 버린다 (자식 없음)
+              } else {
+                var el = document.createElement(tag.toLowerCase());
+                if (tag === 'A') {
+                  var href = safeHref(node.getAttribute('href'));
+                  if (href) {
+                    el.setAttribute('href', href);
+                    el.setAttribute('rel', 'noopener noreferrer');
+                    if (node.getAttribute('target') === '_blank') el.setAttribute('target', '_blank');
+                  }
+                } else if (allowedAttrs.indexOf('style') >= 0) {
+                  // P/H1~H6 전용 — text-align·margin-left/right 값만 검증 후 재조립
+                  var style = safeBlockStyle(node.getAttribute('style'));
+                  if (style) el.setAttribute('style', style);
+                }
+                walk(node, el);
+                to.appendChild(el);
               }
-              walk(node, el);
-              to.appendChild(el);
             }
+            // 허용 외 태그(script/style/iframe/div/span/…) → 통째로 버림
           }
-          // 허용 외 태그(script/style/iframe/div/span/…) → 통째로 버림
         }
         node = node.nextSibling;
       }
@@ -293,7 +414,10 @@
    * ================================================================ */
 
   function looksLikeHtml(v) {
-    return /<(p|br|strong|b|em|i|u|s|ul|ol|li|a|img|blockquote|pre|code|h[1-6])\b[^>]*>/i.test(String(v || ''));
+    // pre|code 는 더 이상 만들어지지 않지만(UNWRAP_TAGS), 과거 저장된 댓글을 여전히
+    // "이미 HTML" 로 인식해 sanitizeCommentHtml 경로(래퍼 벗기고 텍스트 보존)를 태워야
+    // 하므로 감지 패턴에는 남겨둔다. table 은 이번 표 기능 추가로 새로 등장하는 태그.
+    return /<(p|br|strong|b|em|i|u|s|ul|ol|li|a|img|blockquote|pre|code|table|h[1-6])\b[^>]*>/i.test(String(v || ''));
   }
 
   /** 순수 텍스트 → 문단 HTML (빈 줄로 문단 분리, 단일 개행은 <br>). 에디터 초기값 변환과 동일 규칙. */
@@ -327,17 +451,29 @@
   /* ================================================================ *
    *  CKEditor 툴바 구성
    *
-   *  1차 5개(굵게·기울임·글머리목록·번호목록·링크)에 인용구·코드블록·인라인 코드·
-   *  제목(H2/H3/H4)·취소선을 더한다. 필요한 플러그인은 전부 sirsoft-ckeditor5 가
-   *  same-origin 으로 동봉한 CKEditor 5 UMD 단일 패키지 번들(`window.CKEDITOR`)에 이미
-   *  들어 있다 — 툴바에 노출만 하면 된다(별도 번들 로드 없음 = UMD 중복 로딩 위험 없음).
+   *  2026-09-11: 게시글 본문 에디터(sirsoft-ckeditor5)의 standard 프리셋과 **완전
+   *  대응**하도록 재구성했다(이미지 업로드만 제외 — sirsoft-board 첨부 시스템 결합
+   *  문제로 재사용 불가 판정, 별도 사안). 직전 작업에서 추가했던 인라인 코드·코드블록은
+   *  본문에 없는 기능이라 롤백했다(본문에 있던 밑줄·정렬·들여쓰기·표를 대신 채운다).
+   *
+   *  heading 옵션은 일부러 지정하지 않는다 — CKEditor5 기본값(문단 + Heading1~3 이
+   *  h2/h3/h4 로 출력)이 sirsoft-ckeditor5 도 그대로 쓰는 기본값과 완전히 같고, 드롭다운
+   *  라벨도 코어 번역팩이 로케일에 맞게 그려 본문과 문자 그대로 일치한다. 직전 구현은
+   *  커스텀 라벨("제목 (큰)" 등)과 H2/H3/H4 표기라 본문과 달랐다 — 이번에 롤백.
+   *
+   *  필요한 플러그인은 전부 sirsoft-ckeditor5 가 same-origin 으로 동봉한 CKEditor 5
+   *  UMD 단일 패키지 번들(`window.CKEDITOR`)에 이미 들어 있다 — 툴바에 노출만 하면
+   *  된다(별도 번들 로드 없음 = UMD 중복 로딩 위험 없음).
    *
    *  방어적으로 조립한다: 번들에 없는 플러그인은 해당 툴바 항목과 함께 건너뛰고
-   *  경고를 남긴다(연속 구분자는 정리). 구분선(HorizontalLine)·이미지·표·미디어는
-   *  댓글 맥락에서 제외.
+   *  경고를 남긴다(연속 구분자는 정리). 버튼에 직접 안 묶이는 부가 플러그인
+   *  (IndentBlock·TableToolbar) 은 대응 버튼이 실제로 포함됐을 때만 추가한다.
    *
-   *  코드블록의 언어 선택 드롭다운은 `codeBlock.languages` 를 Plain text 하나로
-   *  제한한다 — 게시글 본문 에디터에 언어 선택 UI 가 없어 댓글도 맞춘다.
+   *  표 컨텍스트 툴바(셀 선택 시 뜨는 팝업)는 본문의 tableProperties·
+   *  tableCellProperties·mergeTableCells 까지는 대응하지 않는다 — 그 기능들은 셀에
+   *  style/colspan 속성을 심어 새니타이저에 새 허용 규칙이 더 필요해지는데, 댓글
+   *  맥락에서 굳이 필요하지 않은 위험 표면이라 판단해 열·행 추가/삭제(tableColumn·
+   *  tableRow)까지만 노출한다.
    * ================================================================ */
 
   function buildToolbar(CK) {
@@ -347,16 +483,20 @@
       '|',
       ['bold', CK.Bold],
       ['italic', CK.Italic],
+      ['underline', CK.Underline],
       ['strikethrough', CK.Strikethrough],
-      ['code', CK.Code],
+      '|',
+      ['alignment', CK.Alignment],
+      '|',
+      ['link', CK.Link],
+      ['blockQuote', CK.BlockQuote],
       '|',
       ['bulletedList', CK.List],
       ['numberedList', CK.List],
+      ['indent', CK.Indent],
+      ['outdent', CK.Indent],
       '|',
-      ['blockQuote', CK.BlockQuote],
-      ['codeBlock', CK.CodeBlock],
-      '|',
-      ['link', CK.Link]
+      ['insertTable', CK.Table]
     ];
 
     var pluginSet = [CK.Essentials, CK.Paragraph];
@@ -386,39 +526,37 @@
     while (items.length && items[items.length - 1] === '|') items.pop();
     while (items.length && items[0] === '|') items.shift();
 
+    // 들여쓰기/내어쓰기 버튼이 실제로 있을 때만 IndentBlock 을 추가한다 — 이 플러그인이
+    // 있어야 목록 밖 문단·제목의 들여쓰기가 margin-left 로 실제 반영된다(목록 안 들여쓰기는
+    // List 플러그인 자체 중첩으로 동작해 이 플러그인이 필요 없다).
+    if (items.indexOf('indent') >= 0 || items.indexOf('outdent') >= 0) {
+      if (CK.IndentBlock) {
+        if (seen.indexOf(CK.IndentBlock) < 0) {
+          pluginSet.push(CK.IndentBlock);
+          seen.push(CK.IndentBlock);
+        }
+      } else {
+        logger.warn('CKEditor UMD 번들에 IndentBlock 이 없어 들여쓰기가 문단 여백에 반영되지 않을 수 있습니다.');
+      }
+    }
+
+    // insertTable 버튼이 실제로 있을 때만 TableToolbar(셀 선택 시 컨텍스트 팝업)를 추가.
+    var tableContentToolbar;
+    if (items.indexOf('insertTable') >= 0 && CK.TableToolbar) {
+      pluginSet.push(CK.TableToolbar);
+      seen.push(CK.TableToolbar);
+      tableContentToolbar = ['tableColumn', 'tableRow'];
+    }
+
     if (missing.length) {
       logger.warn('CKEditor UMD 번들에 없는 플러그인 — 툴바에서 제외: ' + missing.join(', '));
     }
 
-    var heading;
-    if (CK.Heading) {
-      // 댓글 맥락 — h1 은 페이지용이라 제외, h5/h6 은 거의 안 쓰임. H2/H3/H4 만.
-      heading = {
-        options: [
-          { model: 'paragraph', title: t('editor.heading.paragraph', '본문'), class: 'ck-heading_paragraph' },
-          { model: 'heading2', view: 'h2', title: t('editor.heading.h2', '제목 (큰)'), class: 'ck-heading_heading2' },
-          { model: 'heading3', view: 'h3', title: t('editor.heading.h3', '제목 (중)'), class: 'ck-heading_heading3' },
-          { model: 'heading4', view: 'h4', title: t('editor.heading.h4', '제목 (작은)'), class: 'ck-heading_heading4' }
-        ]
-      };
-    }
-
-    var codeBlock;
-    if (CK.CodeBlock) {
-      // 코드블록 언어 선택 UI 축소 — Plain text 하나만 남긴다. 게시글 본문
-      // 에디터(sirsoft-ckeditor5)엔 언어 선택 UI 자체가 없어 댓글도 그에 맞춘다.
-      // CKEditor CodeBlock 은 `languages` 가 비면 안 되므로 최소 1개(plaintext)는 유지 —
-      // 드롭다운에 "Plain text" 하나만 떠서 선택 자체가 무의미해진다.
-      // 새니타이저가 `<code>` 의 `class="language-*"` 를 어차피 제거하므로 렌더 결과는
-      // 언어 무관하게 동일하다. 기존에 다른 언어로 저장된 댓글도 그대로 렌더된다.
-      codeBlock = {
-        languages: [
-          { language: 'plaintext', label: t('editor.codeblock.plaintext', 'Plain text') }
-        ]
-      };
-    }
-
-    return { plugins: pluginSet, items: items, heading: heading, codeBlock: codeBlock };
+    return {
+      plugins: pluginSet,
+      items: items,
+      table: tableContentToolbar ? { contentToolbar: tableContentToolbar } : undefined
+    };
   }
 
   /* ================================================================ *
@@ -559,8 +697,9 @@
         var config = {
           plugins: tb.plugins,
           toolbar: { items: tb.items },
-          heading: tb.heading,
-          codeBlock: tb.codeBlock,
+          table: tb.table,
+          // 본문 에디터(sirsoft-ckeditor5)와 동일한 들여쓰기 폭 — 한 클릭에 40px.
+          indentBlock: { offset: 40, unit: 'px' },
           // Autoformat 은 일부러 넣지 않는다 — "> " → 인용구, "```" → 코드블록 같은
           // 입력 중 자동 변환을 켜지 않아 (자동링크 때 겪은) 상태 액션 경합 표면을
           // 늘리지 않는다. 툴바 버튼은 editor.execute() → 일반 change:data → 기존
@@ -578,7 +717,8 @@
             }
           },
           placeholder: ta.getAttribute('placeholder') || t('editor.placeholder', ''),
-          initialData: valueToEditorHtml(ta.value)
+          initialData: valueToEditorHtml(ta.value),
+          language: getCurrentLocale()
         };
 
         CK.ClassicEditor.create(host, config)
@@ -1043,7 +1183,7 @@
    *  HTML 이 이스케이프되어 있으므로, textContent 를 새니타이즈해 innerHTML 로 승격한다.
    * ================================================================ */
 
-  var HTMLISH = /<(p|br|strong|b|em|i|u|s|ul|ol|li|a|img|blockquote|pre|code|h[1-6])\b[^>]*>[\s\S]*<\/(p|strong|b|em|i|u|s|ul|ol|li|a|blockquote|pre|code|h[1-6])>|<(br|img)\b[^>]*\/?>/i;
+  var HTMLISH = /<(p|br|strong|b|em|i|u|s|ul|ol|li|a|img|blockquote|pre|code|table|h[1-6])\b[^>]*>[\s\S]*<\/(p|strong|b|em|i|u|s|ul|ol|li|a|blockquote|pre|code|table|h[1-6])>|<(br|img)\b[^>]*\/?>/i;
   var HAS_URL = /\bhttps?:\/\/[^\s<>"']+/i;
 
   function upgradeRenderedComments(root) {
@@ -1113,21 +1253,24 @@
       'html.dark p[data-g7ce="r"] a{color:#60a5fa;}',
       'p[data-g7ce="r"] strong,p[data-g7ce="r"] b{font-weight:600;}',
       'p[data-g7ce="r"] p{margin:.25em 0;}',
-      // 툴바 확장 — 인용구·코드·제목·취소선(승격된 본문). sirsoft-ckeditor5 .ck-content 스타일 참고, 필요한 만큼만.
+      // 툴바 확장 — 인용구·제목·취소선(승격된 본문). sirsoft-ckeditor5 .ck-content 스타일 참고, 필요한 만큼만.
+      // 코드블록·인라인코드 CSS 는 2026-09-11 기능 롤백과 함께 제거(UNWRAP_TAGS 로 태그
+      // 자체가 더 이상 렌더되지 않는다 — 기존 코드블록 댓글도 텍스트만 남아 이 규칙이 필요 없다).
       'p[data-g7ce="r"] blockquote{border-left:3px solid #d1d5db;padding:.1em 0 .1em .9em;margin:.4em 0;color:#4b5563;}',
       'html.dark p[data-g7ce="r"] blockquote{border-left-color:#4b5563;color:#9ca3af;}',
-      'p[data-g7ce="r"] pre{background:#f3f4f6;border-radius:6px;padding:.6em .8em;margin:.4em 0;overflow-x:auto;font-size:.9em;line-height:1.45;}',
-      'html.dark p[data-g7ce="r"] pre{background:#1f2937;}',
-      'p[data-g7ce="r"] pre code{display:block;background:transparent;padding:0;border:0;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;white-space:pre;color:inherit;}',
-      'p[data-g7ce="r"] code{background:#f3f4f6;border-radius:4px;padding:.1em .35em;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.9em;}',
-      'html.dark p[data-g7ce="r"] code{background:#374151;}',
       'p[data-g7ce="r"] h2{font-size:1.3em;font-weight:700;line-height:1.3;margin:.55em 0 .3em;}',
       'p[data-g7ce="r"] h3{font-size:1.15em;font-weight:700;line-height:1.3;margin:.5em 0 .3em;}',
       'p[data-g7ce="r"] h4{font-size:1.02em;font-weight:700;line-height:1.3;margin:.45em 0 .3em;}',
       'p[data-g7ce="r"] s{text-decoration:line-through;}',
+      // 표 — 새니타이저가 CKEditor 의 <figure class="table"> 래퍼를 벗겨(UNWRAP_TAGS) <table>
+      // 만 남기므로, class="table" 셀렉터 없이 태그 자체를 스코프 안에서 직접 스타일한다.
+      'p[data-g7ce="r"] table{border-collapse:collapse;width:100%;margin:.5em 0;}',
+      'p[data-g7ce="r"] table td,p[data-g7ce="r"] table th{border:1px solid #d1d5db;padding:.4em .6em;text-align:left;}',
+      'p[data-g7ce="r"] table th{background:#f3f4f6;font-weight:600;}',
+      'html.dark p[data-g7ce="r"] table td,html.dark p[data-g7ce="r"] table th{border-color:#4b5563;}',
+      'html.dark p[data-g7ce="r"] table th{background:#374151;}',
       // 에디터 안(.ck-content) — CKEditor 기본 CSS 로 대부분 커버되나 스코프 보정
       '.g7ce-wrapper .ck-content blockquote{border-left:3px solid #d1d5db;}',
-      '.g7ce-wrapper .ck-content pre{max-width:100%;overflow-x:auto;}',
       // 외부 링크 렌더링 — 자동 줄바꿈(긴 URL 이 레이아웃 안 깨도록)
       'p[data-g7ce="r"]{overflow-wrap:anywhere;}',
       'p[data-g7ce="r"] a.g7ce-autolink{word-break:break-all;overflow-wrap:anywhere;}',

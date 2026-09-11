@@ -5,7 +5,7 @@
         "ko": "댓글 에디터",
         "en": "Comment Editor"
     },
-    "version": "1.0.0",
+    "version": "1.1.0",
     "license": "MIT",
     "description": {
         "ko": "sirsoft-board 게시판의 댓글·답글·댓글수정 입력창(기본은 순수 텍스트)에 CKEditor 5 를 얹어 굵게·기울임·목록·링크 서식을 쓸 수 있게 하는 독립 플러그인입니다. sirsoft-board·sirsoft-ckeditor5·템플릿(sirsoft-basic)은 전혀 수정하지 않으며, 전 페이지에 로드되는 자체 스크립트가 댓글 textarea 를 감지해 에디터로 교체하고, 저장된 HTML 댓글을 방문자 화면에서 허용 태그만 남겨 렌더합니다. CKEditor 5 본체는 sirsoft-ckeditor5 가 동봉한 자산을 재사용하므로 그 플러그인에 의존합니다.",
