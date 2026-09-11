@@ -1,0 +1,27 @@
+{
+  "toolbar": {
+    "bold": "Bold",
+    "italic": "Italic",
+    "strikethrough": "Strikethrough",
+    "code": "Inline code",
+    "bulletedList": "Bulleted list",
+    "numberedList": "Numbered list",
+    "blockQuote": "Block quote",
+    "codeBlock": "Code block",
+    "heading": "Heading",
+    "link": "Link"
+  },
+  "editor": {
+    "placeholder": "Write a comment…",
+    "load_failed": "Could not load the comment editor. You can keep writing in the plain input.",
+    "heading": {
+      "paragraph": "Paragraph",
+      "h2": "Heading (large)",
+      "h3": "Heading (medium)",
+      "h4": "Heading (small)"
+    },
+    "codeblock": {
+      "plaintext": "Plain text"
+    }
+  }
+}

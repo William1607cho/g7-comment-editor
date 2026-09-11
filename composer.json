@@ -1,0 +1,23 @@
+{
+    "name": "plugins/g7-comment-editor",
+    "description": "Mounts CKEditor 5 on sirsoft-board comment textareas (comment / reply / edit) for basic rich-text, without modifying sirsoft-board, sirsoft-ckeditor5 or the template.",
+    "type": "library",
+    "version": "1.0.0",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "William Cho"
+        }
+    ],
+    "require": {
+        "php": "^8.2"
+    },
+    "autoload": {
+        "psr-4": {
+            "Plugins\\G7\\Comment\\Editor\\": [
+                "src/",
+                "./"
+            ]
+        }
+    }
+}

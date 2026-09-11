@@ -1,0 +1,24 @@
+# Composer
+/vendor/
+composer.lock
+
+# Node (only if a build is ever added — currently dist/ is hand-authored == resources/js/index.js)
+/node_modules/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+
+# Local / scratch
+*.bak
+*.bak-*
+*.local
+*.log
+
+# Site-specific settings — never in the plugin repo
+**/setting.json

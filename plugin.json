@@ -1,0 +1,34 @@
+{
+    "identifier": "g7-comment-editor",
+    "vendor": "William Cho",
+    "name": {
+        "ko": "댓글 에디터",
+        "en": "Comment Editor"
+    },
+    "version": "1.0.0",
+    "license": "MIT",
+    "description": {
+        "ko": "sirsoft-board 게시판의 댓글·답글·댓글수정 입력창(기본은 순수 텍스트)에 CKEditor 5 를 얹어 굵게·기울임·목록·링크 서식을 쓸 수 있게 하는 독립 플러그인입니다. sirsoft-board·sirsoft-ckeditor5·템플릿(sirsoft-basic)은 전혀 수정하지 않으며, 전 페이지에 로드되는 자체 스크립트가 댓글 textarea 를 감지해 에디터로 교체하고, 저장된 HTML 댓글을 방문자 화면에서 허용 태그만 남겨 렌더합니다. CKEditor 5 본체는 sirsoft-ckeditor5 가 동봉한 자산을 재사용하므로 그 플러그인에 의존합니다.",
+        "en": "Standalone plugin that mounts CKEditor 5 on the comment / reply / comment-edit textareas of sirsoft-board (plain text by default), enabling bold, italic, list and link formatting. sirsoft-board, sirsoft-ckeditor5 and the sirsoft-basic template are never modified: a global script detects comment textareas and swaps them for an editor, and upgrades stored HTML comments on the visitor page with an allow-list sanitizer. It reuses the CKEditor 5 assets bundled by sirsoft-ckeditor5, hence the dependency."
+    },
+    "g7_version": ">=7.0.10",
+    "dependencies": {
+        "modules": {},
+        "plugins": {
+            "sirsoft-ckeditor5": ">=1.0.3"
+        }
+    },
+    "github_url": "https://github.com/William1607cho/g7-comment-editor",
+    "github_changelog_url": "https://github.com/William1607cho/g7-comment-editor/blob/main/CHANGELOG.md",
+    "assets": {
+        "js": {
+            "entry": "resources/js/index.js",
+            "output": "dist/js/plugin.iife.js"
+        },
+        "handlers": true
+    },
+    "loading": {
+        "strategy": "global",
+        "priority": 120
+    }
+}
