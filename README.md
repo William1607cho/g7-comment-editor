@@ -1,5 +1,8 @@
 # g7-comment-editor
 
+[![Release](https://img.shields.io/github/v/release/William1607cho/g7-comment-editor?sort=semver)](https://github.com/William1607cho/g7-comment-editor/releases)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
+
 A standalone [Gnuboard7](https://sir.kr/) plugin that mounts **CKEditor 5** on the
 comment / reply / comment-edit textareas of `sirsoft-board`, so visitors can write
 comments with basic rich-text formatting instead of plain text.
