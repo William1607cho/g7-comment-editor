@@ -1241,8 +1241,22 @@
     style.id = STYLE_ID;
     style.textContent = [
       '.g7ce-hidden-textarea{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0 0 0 0)!important;white-space:nowrap!important;border:0!important;}',
+      // 모바일 오버플로우 수정 — 툴바 확장(2026-09-10)으로 11개 버튼(구분선 포함 18개
+      // 하위요소)이 되면서, CKEditor 기본 툴바 CSS(`flex-wrap:nowrap`, `overflow-x:visible`)
+      // 그대로는 좁은 화면에서 내용이 터져 폭이 늘어난다. `shouldGroupWhenFull` 툴바 옵션은
+      // 설정한 적이 없어(원래도 비활성) 그룹핑 "..." 드롭다운도 동작하지 않았다 — 실측으로
+      // 확인(그룹 클래스는 있어도 오버플로 시에도 항목이 줄지 않고 그대로 넘침). 가로 스크롤
+      // 대신 줄바꿈 채택(사용성): 버튼이 잘리거나 숨겨지지 않고 2줄 이상으로 전부 보인다.
+      // `!important` 가 필요한 이유: `<link id="g7ce-ckeditor5-css">`(CKEditor 자체 CSS)
+      // 가 이 `<style>` 태그보다 <head> 에 나중에 붙어(동적 로드) 캐스케이드 순서상
+      // 같은 특이도의 원본 규칙(`flex-wrap:nowrap` 등)이 실측으로 우리 규칙을 덮어씀을
+      // 확인 — 로드 순서에 의존하지 않도록 명시적으로 이긴다.
+      '.g7ce-wrapper{max-width:100%!important;box-sizing:border-box!important;}',
+      '.g7ce-wrapper .ck.ck-editor{max-width:100%!important;}',
+      '.g7ce-wrapper .ck-toolbar{flex-wrap:wrap!important;max-width:100%!important;box-sizing:border-box!important;row-gap:2px;height:auto!important;}',
+      '.g7ce-wrapper .ck-toolbar__items{flex-wrap:wrap!important;row-gap:2px;}',
       '.g7ce-wrapper{margin-top:.25rem;}',
-      '.g7ce-wrapper .ck-editor__editable{min-height:96px;}',
+      '.g7ce-wrapper .ck-editor__editable{min-height:96px;max-width:100%;box-sizing:border-box;}',
       '.g7ce-wrapper .ck.ck-editor__main>.ck-editor__editable{border-radius:.5rem;}',
       // 승격된 댓글 본문 — Tailwind preflight 로 죽은 목록 마커/링크 스타일 복구
       'p[data-g7ce="r"]{white-space:normal;}',

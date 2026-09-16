@@ -5,6 +5,21 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.1] - 2026-09-16
+
+### Fixed
+
+- Mobile: the comment toolbar no longer overflows its container on narrow
+  screens. Since the 1.1.0 toolbar expansion the toolbar holds 13 buttons (18
+  child nodes including separators), and CKEditor 5's default toolbar CSS
+  (`flex-wrap: nowrap`) pushed the row past the viewport, widening the page.
+  The toolbar now wraps onto multiple rows instead, so every button stays
+  visible and reachable — no horizontal scrolling and no hidden items. The
+  `shouldGroupWhenFull` overflow dropdown was never enabled in this plugin, so
+  grouping was not an option. The rules are marked `!important` because
+  CKEditor's own stylesheet is injected into `<head>` after this plugin's
+  `<style>` element and would otherwise win the cascade at equal specificity.
+
 ## [1.1.0] - 2026-09-11
 
 ### Changed
