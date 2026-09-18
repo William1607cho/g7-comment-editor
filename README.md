@@ -250,6 +250,8 @@ already stored sanitized stay as they are.
   hand-crafted API input the two can place content slightly differently (e.g. the
   browser adds `<tbody>` to a table), but only allowed, validated markup is ever
   emitted, so this affects layout, not safety.
+- Extremely deeply nested HTML (beyond libxml's parser depth limit, about 256 levels)
+  can sanitize to nothing on the server and is then rejected with 422.
 
 ## <a name="사용법-한국어"></a>사용법 (한국어)
 

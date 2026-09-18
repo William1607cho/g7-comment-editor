@@ -33,8 +33,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (no non-whitespace text and no image) is now rejected with 422. This includes
   a whitespace-only comment such as `<p>&nbsp;</p>`, which was accepted before.
   A sanitized result shorter than the board's `min_comment_length` is also
-  rejected. Core validation runs on the raw input, so these checks are added to
-  the request rules to catch content that sanitizing removes.
+  rejected. Extremely deeply nested HTML (beyond libxml's parser depth limit,
+  about 256 levels) can sanitize to nothing and be rejected the same way.
+  Core validation runs on the raw input, so these checks are added to the
+  request rules to catch content that sanitizing removes.
 - The browser sanitizer is kept as is. It still runs before submitting and when
   rendering, and remains the last line of defence for comments already in the
   database (existing comments are not migrated).
