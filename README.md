@@ -8,9 +8,11 @@ comment / reply / comment-edit textareas of `sirsoft-board`, so visitors can wri
 comments with basic rich-text formatting instead of plain text.
 
 `sirsoft-board`, `sirsoft-ckeditor5` and the visitor template (`sirsoft-basic`) are
-**never modified**. Everything is done by one globally-loaded script
-(`loading.strategy: "global"`) that swaps comment textareas for an editor and
-upgrades stored HTML comments on the visitor page through an allow-list sanitizer.
+**never modified**. One globally-loaded script (`loading.strategy: "global"`) swaps
+comment textareas for an editor and upgrades stored HTML comments on the visitor page
+through an allow-list sanitizer. Since 1.2.0 the same allow-list is also enforced
+**on the server** right before a comment is stored, through `sirsoft-board`'s comment
+input hooks.
 
 - **[사용법 (한국어) 아래로 이동](#사용법-한국어)**
 
@@ -123,10 +125,23 @@ to install `sirsoft-ckeditor5` alongside if it is missing.
 
 ## Security (XSS)
 
-`sirsoft-board` stores and returns comment HTML **without filtering**, and it is
-normally safe because the visitor page escapes it. This plugin un-escapes it during
-the render upgrade, so **XSS defence is entirely the plugin's whitelist sanitizer**
-(`sanitizeCommentHtml`):
+Comment HTML is sanitized in **two layers** that share one allow-list
+(`resources/sanitize-policy.json`):
+
+1. **Server, before storing (1.2.0).** `CommentSanitizeListener` hooks into
+   `sirsoft-board`'s comment input filters and rebuilds the HTML in PHP
+   (`CommentHtmlSanitizer`) before it reaches the database — so a comment POSTed
+   straight to the API, bypassing the browser editor, is stored clean too.
+2. **Browser, before submitting and when rendering** (`sanitizeCommentHtml`).
+   `sirsoft-basic` escapes comment bodies; this plugin un-escapes them during the
+   render upgrade, and re-sanitizes every time.
+
+**The browser layer is not redundant and must not be removed.** The server layer only
+covers comments written or edited from 1.2.0 on. The render-time pass is the last line
+of defence for whatever is *already* in the database — comments stored before 1.2.0,
+rows changed directly in the database, or a future gap in the server policy.
+
+Both layers apply the same rules:
 
 - Tags outside the allow-list (`script style iframe object embed div span`, …) are
   **removed together with their children**.
@@ -144,7 +159,53 @@ the render upgrade, so **XSS defence is entirely the plugin's whitelist sanitize
   break out of the attribute — is dropped, one declaration at a time, with no
   path to smuggle a raw string into the output.
 - `on*` handler attributes are never in the allow-list, so they are always removed.
-- Parsing uses `DOMParser` (inert document — scripts do not run).
+- Parsing uses `DOMParser` in the browser (inert document — scripts do not run) and
+  libxml in PHP. Neither copies nodes or attributes over: output is rebuilt from
+  allowed elements, validated attributes and escaped text only.
+
+### Server-side sanitizing (1.2.0)
+
+- **Hooks** (priority 1000, i.e. last): `sirsoft-board.comment.store_validation_rules`
+  / `update_validation_rules` add two rules to `content`; `filter_create_data` /
+  `filter_update_data` replace `content` with the sanitized result. User and admin
+  endpoints share these request classes and the same service, so every write path is
+  covered.
+- **Empty after sanitizing → 422.** Core validation (`required`, `min`, `max`, blocked
+  keywords) runs on the *raw* input, before sanitizing. So the plugin re-checks the
+  sanitized result: it is rejected if nothing visible is left (no non-whitespace text
+  and no image), or if it is shorter than the board's `min_comment_length`. This also
+  rejects a whitespace-only comment such as `<p>&nbsp;</p>`, which was accepted before
+  1.2.0. `max` is not re-checked — sanitizing can add a few characters
+  (`rel="noopener noreferrer"`, escaping) that are not the writer's fault.
+- **Input kinds**, matching the browser's own decision:
+  - contains an allowed tag (`looksLikeHtml`) → allow-list sanitizing;
+  - no allowed tag, but `<` followed by a letter, `/`, `!` or `?` (e.g.
+    `<script>alert(1)</script>`) → treated as plain text and stored as escaped
+    `<p>`/`<br>` HTML, so a payload that avoids every allowed tag does not reach the
+    database verbatim (it still shows as the same literal text);
+  - anything else → stored unchanged (plain text from the fallback textarea).
+- **Editor output is stored byte-for-byte unchanged.** The PHP serializer mirrors the
+  browser's `innerHTML` (escaping, `&nbsp;`, attribute order), and the regexes mirror
+  JS semantics (`\s`/`trim()` whitespace set, `.` and anchors).
+- Existing comments are **not migrated**; they are still protected by the render-time
+  pass.
+
+### Maintaining the allow-list
+
+`resources/sanitize-policy.json` is the single source. The PHP sanitizer reads it at
+runtime; the browser sanitizer carries a generated copy (`ALLOWED_TAGS` /
+`UNWRAP_TAGS`, between the `@sanitize-policy` markers in `resources/js/index.js`).
+After editing the JSON:
+
+```bash
+php scripts/sync-policy.php          # regenerate the JS copy, sync dist/
+php scripts/sync-policy.php --check  # verify: generated block, dist == source, rule literals
+```
+
+`--check` also compares the browser's rule literals (`safeHref`, `safeImgSrc`,
+`safeBlockStyle`, `looksLikeHtml`, `HTMLISH`) against the JSON — those functions are
+not generated, so a change to a rule means editing both the JSON and the function,
+and `--check` fails until they agree. Run it before building a release archive.
 
 ### Embed security
 
@@ -157,8 +218,9 @@ is extracted from the URL by regex (`youtube` `[\w-]{6,}`, `twitter` / `tiktok`
 `tiktok.com`), then the assembled result is re-validated by regex. There is no code
 path that produces an arbitrary-domain iframe.
 
-Deactivating the plugin stops the render upgrade — comments go back to escaped text
-and the input goes back to a plain textarea.
+Deactivating the plugin stops the render upgrade and the server-side sanitizing —
+comments go back to escaped text and the input goes back to a plain textarea. Values
+already stored sanitized stay as they are.
 
 ## Known limitations
 
@@ -181,7 +243,13 @@ and the input goes back to a plain textarea.
   the site's CSP (if any) must allow those domains.
 - The comment body shares the board's `max_comment_length` limit (default 1000),
   and HTML markup counts toward the length.
-- No server-side code (no routes, migrations, settings tables). One global script.
+- No routes, migrations or settings tables. Server-side code is one hook listener
+  (sanitizing, 1.2.0); everything else is one global script.
+- Server-side parsing uses libxml's HTML4 parser (PHP 8.2 has no HTML5 parser), while
+  the browser uses HTML5. For editor output the stored value is identical; for
+  hand-crafted API input the two can place content slightly differently (e.g. the
+  browser adds `<tbody>` to a table), but only allowed, validated markup is ever
+  emitted, so this affects layout, not safety.
 
 ## <a name="사용법-한국어"></a>사용법 (한국어)
 
@@ -202,8 +270,13 @@ and the input goes back to a plain textarea.
 **Facebook 제외**), 이미지 확장자 URL 은 `<img>` 핫링크, 그 외 URL 은 카드화 없이 링크화 +
 자동 줄바꿈. 플랫폼별·이미지 개별 on/off 는 플러그인 설정으로 조정합니다.
 
-**보안**: 저장 HTML 은 서버에서 검열되지 않으므로 XSS 방어는 플러그인의 화이트리스트
-새니타이저가 전담합니다. 허용 태그 외 전부 제거, `blockquote/table 계열/h1~h6` 는 속성
+**보안**: 정제는 두 층이고 허용 목록(`resources/sanitize-policy.json`)을 함께 씁니다.
+1.2.0 부터 **서버**가 댓글 저장 직전에 PHP 로 한 번 정제하므로(sirsoft-board 댓글 입력 훅),
+API 로 직접 POST 한 댓글도 DB 에는 정제본만 남습니다. 정제 뒤 보이는 내용이 없으면(공백만 있는
+`<p>&nbsp;</p>` 포함) 422 로 거부합니다. **브라우저**는 제출 직전과 화면에 그릴 때 다시 정제합니다.
+렌더 시 정제는 DB 에 이미 들어가 있는 것(1.2.0 이전 댓글 등)에 대한 마지막 방어선이라
+**서버 정제가 있어도 제거하지 않습니다**(중복이 아니라 방어 계층). 허용 목록을 고치면
+`php scripts/sync-policy.php` 후 `--check` 로 확인합니다. 허용 태그 외 전부 제거, `blockquote/table 계열/h1~h6` 는 속성
 허용 0, `on*`·`javascript:`·임의 도메인 iframe 은 생성 경로가 없습니다. `p`/`h1~h6` 의
 `style` 만 예외적으로 허용하되 통짜 복사가 아니라 `text-align`(4개 키워드)·
 `margin-left/right`(0~800px 숫자)만 값까지 검증해 재조립합니다 — 그 외 프로퍼티/값은

@@ -5,6 +5,40 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-09-18
+
+### Added
+
+- Server-side sanitizing before a comment is stored. A new hook listener
+  (`CommentSanitizeListener`, priority 1000) runs on `sirsoft-board`'s comment
+  input hooks and rebuilds the HTML in PHP (`CommentHtmlSanitizer`, `dom`/libxml,
+  no new dependencies) with the same allow-list as the browser sanitizer. A
+  comment POSTed straight to the API, bypassing the editor, is now stored clean.
+  Covers create and update, for both user and admin endpoints.
+- `resources/sanitize-policy.json` — single source of the allow-list. The PHP
+  sanitizer reads it at runtime; the browser sanitizer's `ALLOWED_TAGS` /
+  `UNWRAP_TAGS` are now a generated copy between `@sanitize-policy` markers
+  (values unchanged).
+- `scripts/sync-policy.php` (dev tool, not shipped in release archives) —
+  regenerates the browser copy and, with `--check`, verifies the generated
+  block, `dist == source`, and the browser rule literals against the JSON.
+- Plain text that contains no allowed tag but has `<` followed by a letter,
+  `/`, `!` or `?` (e.g. `<script>alert(1)</script>`) is stored as escaped
+  `<p>`/`<br>` HTML instead of verbatim. It still displays as the same literal
+  text.
+
+### Changed
+
+- **Behaviour change:** a comment whose sanitized result has nothing visible
+  (no non-whitespace text and no image) is now rejected with 422. This includes
+  a whitespace-only comment such as `<p>&nbsp;</p>`, which was accepted before.
+  A sanitized result shorter than the board's `min_comment_length` is also
+  rejected. Core validation runs on the raw input, so these checks are added to
+  the request rules to catch content that sanitizing removes.
+- The browser sanitizer is kept as is. It still runs before submitting and when
+  rendering, and remains the last line of defence for comments already in the
+  database (existing comments are not migrated).
+
 ## [1.1.1] - 2026-09-16
 
 ### Fixed

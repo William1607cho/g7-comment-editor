@@ -20,8 +20,12 @@
  *     blockquote·table 계열·h1~h6 만 허용, p/h1~h6 에 한해 text-align·margin-left 만 검증
  *     통과한 값으로 제한 허용, 그 외 태그·속성·이벤트 핸들러 제거)를 거쳐 실제 서식으로 바꾼다.
  *
- * 서버는 댓글 HTML 을 검열 없이 저장/반환하고, 승격 시 이스케이프가 풀리므로 **XSS 방어는
- * 아래 sanitizeCommentHtml() 이 전담**한다. CKEditor 5 본체/CSS 는 sirsoft-ckeditor5 가
+ * 정제는 두 층이다(1.2.0). 서버(src/Sanitizer/CommentHtmlSanitizer.php)가 저장 직전에 같은
+ * 허용 목록으로 정제해 DB 에는 정제본만 남기고, 아래 sanitizeCommentHtml() 은 제출 직전과
+ * 렌더 승격 시 다시 정제한다. **렌더 시 정제는 DB 에 이미 들어가 있는 것(1.2.0 이전 댓글,
+ * 직접 DB 조작, 향후 서버 정책 결함)에 대한 마지막 방어선이므로, 서버 정제가 있어도 제거하지
+ * 않는다 — 중복이 아니라 방어 계층이다.** 허용 목록 원본은 resources/sanitize-policy.json 이고
+ * 아래 @sanitize-policy 구간은 거기서 생성한 사본이다. CKEditor 5 본체/CSS 는 sirsoft-ckeditor5 가
  * 동봉한 same-origin 자산을 재사용한다(그래서 그 플러그인에 의존).
  *
  * 설계 원칙: 멱등(처리 표시), SPA 대응(DOMContentLoaded + 지연 재스캔 + body MutationObserver),
@@ -244,7 +248,7 @@
   }
 
   /* ================================================================ *
-   *  화이트리스트 새니타이저 (저장 HTML 렌더 승격 시 XSS 방어 전담)
+   *  화이트리스트 새니타이저 (제출 직전 + 렌더 승격 시 — 서버 정제와 겹치는 방어 계층, 제거 금지)
    *
    *  1차 툴바가 만들 수 있는 태그만 허용하고, 그 외 태그·전체 속성·이벤트 핸들러를
    *  모두 제거한다. 허용 외 태그는 통째로 버린다(자식도 함께). DOMParser 로 파싱하므로
@@ -268,6 +272,9 @@
   //  walk() 의 기본 동작(허용 외 태그는 자식까지 통째로 버림)대로 처리돼, 기존에 코드블록을
   //  쓴 댓글의 본문 텍스트 자체가 통째로 사라진다 — 서식만 잃고 텍스트는 보존하는 쪽이
   //  사용자 데이터 보존 원칙에 맞는다(별도 마이그레이션 불필요).
+  /* @sanitize-policy:begin — 자동 생성 구간. 직접 고치지 말 것.
+   *  원본은 resources/sanitize-policy.json(서버 정제기와 같은 목록). 고친 뒤
+   *  `php scripts/sync-policy.php` 로 다시 만들고 `--check` 로 확인한다. */
   var ALLOWED_TAGS = {
     P: ['style'],
     BR: [],
@@ -299,6 +306,7 @@
 
   /** 허용 외 태그이지만 자식(텍스트 등)은 보존하고 래퍼만 벗기는 태그. */
   var UNWRAP_TAGS = { PRE: 1, CODE: 1, FIGURE: 1 };
+  /* @sanitize-policy:end */
 
   /** style 속성 부분 허용 — 프로퍼티 이름과 값을 전부 정규식으로 검증한다.
    *  통짜 style 허용은 절대 하지 않는다: `expression()`/`url(javascript:...)` 같은
