@@ -3,10 +3,12 @@
 /**
  * 서버측 번역 (PHP __()).
  *
- * 이 플러그인은 서버 코드가 없어(순수 global JS) 백엔드에서 참조하는 키가 없다.
- * 파일은 코어의 확장 언어 경로 규약(plugins/{id}/lang/{locale}/*.php)을 만족시키기 위한
- * 자리표시자다. 프론트 문구는 resources/lang/{locale}.json 을 본다.
+ * 1.2.0 부터 서버 측 댓글 정제(CommentSanitizeListener)가 검증 오류 문구로 이 파일을 참조한다.
+ * 프론트 문구는 resources/lang/{locale}.json 을 본다.
  */
 return [
     'name' => '댓글 에디터',
+    'sanitize' => [
+        'empty' => '허용되지 않는 서식만 있어 저장할 내용이 없습니다.',
+    ],
 ];

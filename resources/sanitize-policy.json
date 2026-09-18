@@ -1,0 +1,42 @@
+{
+    "_readme": "Single source of the comment HTML allow-list. Read at runtime by src/Sanitizer/CommentHtmlSanitizer.php (server). The browser sanitizer in resources/js/index.js carries a generated copy of allowed_tags/unwrap_tags between the @sanitize-policy markers, and its rule literals (safeBlockStyle / safeHref / safeImgSrc / looksLikeHtml) are compared against this file. After editing, run: php scripts/sync-policy.php && php scripts/sync-policy.php --check",
+    "version": 1,
+    "allowed_tags": {
+        "P": ["style"],
+        "BR": [],
+        "STRONG": [],
+        "B": [],
+        "EM": [],
+        "I": [],
+        "U": [],
+        "S": [],
+        "UL": [],
+        "OL": [],
+        "LI": [],
+        "BLOCKQUOTE": [],
+        "H1": ["style"],
+        "H2": ["style"],
+        "H3": ["style"],
+        "H4": ["style"],
+        "H5": ["style"],
+        "H6": ["style"],
+        "TABLE": [],
+        "THEAD": [],
+        "TBODY": [],
+        "TR": [],
+        "TH": [],
+        "TD": [],
+        "A": ["href", "target", "rel"],
+        "IMG": ["src", "alt"]
+    },
+    "unwrap_tags": ["PRE", "CODE", "FIGURE"],
+    "block_style": {
+        "text_align": ["left", "right", "center", "justify"],
+        "margin_props": ["margin-left", "margin-right"],
+        "margin_px_max_digits": 3,
+        "margin_px_max": 800
+    },
+    "href_prefixes": ["http://", "https://", "//", "/", "#", "mailto:"],
+    "img_src_schemes": ["http", "https"],
+    "html_detect_tags": ["p", "br", "strong", "b", "em", "i", "u", "s", "ul", "ol", "li", "a", "img", "blockquote", "pre", "code", "table", "h1", "h2", "h3", "h4", "h5", "h6"]
+}
