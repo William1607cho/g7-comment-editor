@@ -1293,6 +1293,20 @@
       'html.dark p[data-g7ce="r"] table th{background:#374151;}',
       // 에디터 안(.ck-content) — CKEditor 기본 CSS 로 대부분 커버되나 스코프 보정
       '.g7ce-wrapper .ck-content blockquote{border-left:3px solid #d1d5db;}',
+      // 다크모드 — CKEditor 기본 배경은 흰색인데 글자색은 템플릿의 흰색을 상속해 입력이 안 보였다.
+      // 색은 본문 에디터(sirsoft-ckeditor5)의 다크 덮어쓰기와 같은 값을 쓴다. 그쪽은 :root 에 걸고
+      // 글쓰기 화면에서만 주입되므로, 여기서는 댓글 에디터와 말풍선 영역으로 범위를 좁혀 건다.
+      // --ck-color-* 파생 변수는 :root 에서 값이 굳어 상속되므로 파생 변수까지 직접 지정한다.
+      'html.dark .g7ce-wrapper,html.dark .ck-body-wrapper{--ck-color-base-foreground:#1f2937;--ck-color-base-background:#1f2937;--ck-color-base-border:#374151;--ck-color-text:#f3f4f6;--ck-color-toolbar-background:#111827;--ck-color-toolbar-border:#374151;--ck-color-button-default-background:transparent;--ck-color-button-default-hover-background:#374151;--ck-color-button-default-active-background:#4b5563;--ck-color-button-on-background:#374151;--ck-color-button-on-hover-background:#4b5563;--ck-color-focus-border:#3b82f6;--ck-color-input-background:#1f2937;--ck-color-input-text:#f3f4f6;--ck-color-input-border:#374151;--ck-color-panel-background:#1f2937;--ck-color-panel-border:#374151;--ck-color-list-button-hover-background:#374151;--ck-color-list-button-on-background:#3b82f6;--ck-color-list-button-on-color:#f3f4f6;--ck-color-list-button-on-hover-background:#4b5563;--ck-color-labeled-field-label-background:#1f2937;--ck-color-link-default:#60a5fa;--ck-color-link-selected-background:rgba(96,165,250,.1);--ck-color-table-focused-cell-background:rgba(59,130,246,.1);}',
+      'html.dark .g7ce-wrapper{--ck-color-base-text:#f3f4f6;--ck-color-dropdown-panel-background:#1f2937;--ck-color-dropdown-panel-border:#374151;--ck-color-list-background:#1f2937;--ck-color-engine-placeholder-text:#9ca3af;--ck-color-button-on-color:#93c5fd;}',
+      'html.dark .g7ce-wrapper .ck-editor__editable{color:#f3f4f6;}',
+      'html.dark .g7ce-wrapper .ck-content a{color:#60a5fa;}',
+      'html.dark .g7ce-wrapper .ck-content blockquote{border-left-color:#4b5563;color:#9ca3af;}',
+      'html.dark .g7ce-wrapper .ck-content code{background:#374151;color:#f3f4f6;}',
+      'html.dark .g7ce-wrapper .ck-content pre{background:#111827;color:#f3f4f6;border-color:#374151;}',
+      'html.dark .g7ce-wrapper .ck-content pre code{background:transparent;color:inherit;}',
+      'html.dark .g7ce-wrapper .ck-content .table table,html.dark .g7ce-wrapper .ck-content .table td,html.dark .g7ce-wrapper .ck-content .table th{border-color:#4b5563;}',
+      'html.dark .g7ce-wrapper .ck-content .table th{background:#374151;}',
       // 외부 링크 렌더링 — 자동 줄바꿈(긴 URL 이 레이아웃 안 깨도록)
       'p[data-g7ce="r"]{overflow-wrap:anywhere;}',
       'p[data-g7ce="r"] a.g7ce-autolink{word-break:break-all;overflow-wrap:anywhere;}',

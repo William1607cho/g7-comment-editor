@@ -5,6 +5,18 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.1] - 2026-11-09
+
+### Fixed
+
+- Dark mode: the comment, reply and comment-edit editors were unreadable because
+  CKEditor 5 kept its default white editing area while the text colour was
+  inherited from the template's dark theme (white on white). The editing area,
+  toolbar, dropdowns, link balloon, placeholder, links, block quotes, tables,
+  inline code and code blocks now use dark colours when `html.dark` is set. The
+  values match the dark override of the post-body editor (`sirsoft-ckeditor5`).
+  Light mode is unchanged.
+
 ## [1.2.0] - 2026-09-18
 
 ### Added
